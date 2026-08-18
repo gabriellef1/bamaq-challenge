@@ -1,0 +1,176 @@
+# =============================================================================
+# Stack completa do desafio: MySQL + Kafka (KRaft) + Redis + API + Consumer
+#
+# Por que KRaft e não Zookeeper?
+#   O Kafka em modo KRaft usa seu próprio protocolo de consenso (Raft) para
+#   metadados, eliminando o Zookeeper. Ganhos aqui: 1 container em vez de 2,
+#   startup mais rápido e menos memória. Além disso, o Zookeeper está deprecado
+#   desde o Kafka 3.5 e foi REMOVIDO no Kafka 4.0 — subir Zookeeper hoje seria
+#   escolher deliberadamente o caminho legado.
+# =============================================================================
+
+name: bamaq-challenge
+
+services:
+  # ---------------------------------------------------------------- MySQL ----
+  mysql:
+    image: mysql:8.4
+    container_name: bamaq-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?defina MYSQL_ROOT_PASSWORD no .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-bamaq}
+      MYSQL_USER: ${MYSQL_USER:-bamaq}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?defina MYSQL_PASSWORD no .env}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      # Sem healthcheck a API sobe antes do banco aceitar conexões e morre no boot.
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks: [bamaq]
+
+  # ---------------------------------------------------------------- Redis ----
+  redis:
+    image: redis:7.4-alpine
+    container_name: bamaq-redis
+    restart: unless-stopped
+    # Cache é dado descartável e reconstruível a partir do MySQL: sem volume,
+    # sem persistência (--save ""). Perder o Redis não perde informação.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [bamaq]
+
+  # ---------------------------------------------------------------- Kafka ----
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: bamaq-kafka
+    restart: unless-stopped
+    ports:
+      # 9092 é o listener EXTERNAL, para você rodar scripts a partir do host.
+      - "9092:9092"
+    environment:
+      # --- Identidade do nó em modo KRaft ---
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller           # nó único acumula os 2 papéis
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      CLUSTER_ID: 5L6g3nShT-eMCtK--X86sw
+
+      # --- Listeners: um interno (rede docker) e um externo (host) ---
+      # Os containers falam kafka:19092; você, do host, fala localhost:9092.
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:19092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:19092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      # --- Cluster de 1 nó: tudo com fator de replicação 1 ---
+      # Em produção seriam 3 brokers, RF=3 e min.insync.replicas=2.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"          # tópicos são criados explicitamente
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:19092 --list || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    networks: [bamaq]
+
+  # ------------------------------------------------- Criação dos tópicos ----
+  # Container efêmero: cria os tópicos com a configuração que queremos e sai.
+  # Preferimos isso a auto.create.topics: o número de partições é uma decisão
+  # de arquitetura (paralelismo do consumer), não um acidente do runtime.
+  kafka-init:
+    image: apache/kafka:3.9.0
+    container_name: bamaq-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command: >
+      sh -c "
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists
+        --topic ${KAFKA_TOPIC_REQUESTS:-request-processing} --partitions 3 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists
+        --topic ${KAFKA_TOPIC_DLQ:-request-processing-dlq} --partitions 1 --replication-factor 1 &&
+      echo '--- tópicos criados ---' &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --list
+      "
+    restart: on-failure
+    networks: [bamaq]
+
+  # ------------------------------------------------------------------ API ----
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bamaq-api
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      # Sobrescreve os hosts do .env pelos nomes de serviço da rede docker.
+      MYSQL_HOST: mysql
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      mysql:      { condition: service_healthy }
+      redis:      { condition: service_healthy }
+      kafka:      { condition: service_healthy }
+      # A auto-criação de tópicos está desligada: a API só pode publicar
+      # depois que o kafka-init terminar de criar `request-processing`.
+      kafka-init: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks: [bamaq]
+
+  # ------------------------------------------------------------- Consumer ----
+  # MESMA imagem da API, entrypoint diferente. Processo separado para poder
+  # escalar sozinho (`docker compose up --scale consumer=3`) e para que uma
+  # falha no processamento não derrube o endpoint HTTP.
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "app.composition.consumer"]
+    env_file: [.env]
+    environment:
+      MYSQL_HOST: mysql
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+    depends_on:
+      mysql:      { condition: service_healthy }
+      redis:      { condition: service_healthy }
+      kafka:      { condition: service_healthy }
+      kafka-init: { condition: service_completed_successfully }
+    networks: [bamaq]
+
+volumes:
+  mysql_data:
+  kafka_data:
+
+networks:
+  bamaq:
+    driver: bridge

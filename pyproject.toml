@@ -1,0 +1,87 @@
+[project]
+name = "bamaq-challenge"
+version = "1.0.0"
+description = "Processamento assíncrono de solicitações — Desafio Técnico BAMAQ Capital"
+requires-python = ">=3.12"
+
+dependencies = [
+    # --- Inbound: HTTP ---
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.32,<1.0",
+    "slowapi>=0.1.9,<0.2",           # rate limiting
+    # --- Contratos / configuração ---
+    "pydantic>=2.9,<3.0",
+    "pydantic-settings>=2.6,<3.0",   # secrets via env, nunca hardcoded
+    # --- Outbound: persistência ---
+    "SQLAlchemy>=2.0.36,<2.1",
+    "PyMySQL>=1.1.1,<2.0",           # driver puro-Python (sem toolchain C)
+    "cryptography>=43.0",            # exigido pelo auth caching_sha2_password do MySQL 8
+    # --- Outbound: mensageria ---
+    "confluent-kafka>=2.6,<3.0",
+    # --- Outbound: cache ---
+    "redis>=5.2,<6.0",
+    # --- Observabilidade ---
+    "structlog>=24.4,<25.0",         # logs estruturados em JSON, sem dados sensíveis
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9.0",
+    "pytest-cov>=6.0,<7.0",
+    "httpx>=0.27,<0.29",             # TestClient do FastAPI
+    "ruff>=0.8,<1.0",
+    "mypy>=1.13,<2.0",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# =============================================================================
+# pytest
+# =============================================================================
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "unit: domínio puro, sem I/O",
+    "integration: usa fakes in-memory das ports, sem infra real",
+    "e2e: exige a stack do docker compose no ar",
+]
+
+[tool.coverage.run]
+source = ["src/app"]
+omit = ["*/__init__.py"]
+
+# =============================================================================
+# ruff
+# =============================================================================
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF", "S"]
+ignore = ["S101"]  # assert é esperado em testes
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]
+
+# NOTA: a regra "domain/ não importa infra" NÃO é feita aqui — o ruff aplicaria o
+# ban ao projeto inteiro, inclusive aos adapters, que legitimamente usam SQLAlchemy.
+# O guarda-corpo é um teste automatizado: tests/unit/test_architecture.py.
+
+# =============================================================================
+# mypy
+# =============================================================================
+[tool.mypy]
+python_version = "3.12"
+packages = ["app"]
+mypy_path = "src"
+strict = true
+warn_unused_ignores = true

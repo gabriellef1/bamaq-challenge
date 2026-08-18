@@ -1,0 +1,27 @@
+# ---- Segredos: NUNCA versionar ----
+.env
+*.pem
+*.key
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.Python
+build/
+dist/
+
+# ---- Testes / cobertura ----
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Editores / SO ----
+.idea/
+.vscode/
+.DS_Store
