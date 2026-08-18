@@ -15,7 +15,11 @@ from pathlib import Path
 
 import pytest
 
-DOMAIN_DIR = Path(__file__).resolve().parents[2] / "src" / "app" / "domain"
+SRC = Path(__file__).resolve().parents[2] / "src" / "app"
+
+#: Camadas internas do hexágono: ambas proibidas de conhecer infraestrutura.
+#: `application` pode importar `domain`; `domain` não importa ninguém.
+INNER_LAYERS = (SRC / "domain", SRC / "application")
 
 #: Tudo que caracteriza infraestrutura: banco, web, fila, cache, serialização.
 FORBIDDEN_PREFIXES = (
@@ -46,14 +50,18 @@ def _imported_modules(source: str) -> list[str]:
     return modules
 
 
-def _domain_modules() -> list[Path]:
-    return sorted(p for p in DOMAIN_DIR.rglob("*.py") if p.name != "__init__.py")
+def _inner_modules() -> list[Path]:
+    return sorted(
+        p for layer in INNER_LAYERS for p in layer.rglob("*.py") if p.name != "__init__.py"
+    )
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("module_path", _domain_modules(), ids=lambda p: p.name)
-def test_domain_nao_importa_infraestrutura(module_path: Path) -> None:
-    """Nenhum módulo do domínio pode importar uma tecnologia externa."""
+@pytest.mark.parametrize(
+    "module_path", _inner_modules(), ids=lambda p: f"{p.parent.parent.name}/{p.name}"
+)
+def test_camadas_internas_nao_importam_infraestrutura(module_path: Path) -> None:
+    """Nenhum módulo de domain/ ou application/ pode importar tecnologia externa."""
     violations = [
         imported
         for imported in _imported_modules(module_path.read_text(encoding="utf-8"))
@@ -61,11 +69,11 @@ def test_domain_nao_importa_infraestrutura(module_path: Path) -> None:
     ]
     assert not violations, (
         f"{module_path.name} importa infraestrutura: {violations}. "
-        "O domínio só pode depender da biblioteca padrão e de si mesmo."
+        "domain/ e application/ só dependem da stdlib e das camadas internas."
     )
 
 
 @pytest.mark.unit
-def test_dominio_nao_esta_vazio() -> None:
+def test_camadas_internas_nao_estao_vazias() -> None:
     """Protege o teste acima de passar por não ter encontrado arquivo nenhum."""
-    assert len(_domain_modules()) >= 4
+    assert len(_inner_modules()) >= 8
