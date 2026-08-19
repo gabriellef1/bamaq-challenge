@@ -11,8 +11,8 @@ Rodar: uvicorn app.composition.api:app
 from __future__ import annotations
 
 import time
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from slowapi.errors import RateLimitExceeded
@@ -61,8 +61,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
 
-    @contextmanager
-    def lifespan(app: FastAPI) -> Iterator[None]:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # async por exigência do protocolo de lifespan do FastAPI; o corpo é
+        # síncrono (roda uma vez no boot, bloquear aqui não afeta requisições).
         # Infra construída AQUI (startup), não no import: importar o módulo —
         # como fazem os testes e o mypy — não exige broker nem banco no ar.
         engine = build_engine(settings)
