@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     api_port: int = 8000
     rate_limit_create: str = "10/minute"
     rate_limit_read: str = "60/minute"
+    # Teto do corpo HTTP. O payload legítimo tem ~60 bytes; 16 KB é folga de
+    # sobra e ainda barra o JSON-de-500MB como vetor de negação de serviço.
+    max_body_bytes: int = 16_384
 
     @property
     def database_url(self) -> str:

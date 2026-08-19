@@ -45,4 +45,4 @@ USER appuser
 EXPOSE 8000
 
 # Default: API. O serviço `consumer` sobrescreve com o entrypoint do consumidor.
-CMD ["python", "-m", "uvicorn", "app.composition.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "app.composition.api:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]

@@ -17,9 +17,14 @@ from contextlib import contextmanager
 from fastapi import FastAPI
 from slowapi.errors import RateLimitExceeded
 from slowapi.extension import _rate_limit_exceeded_handler
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
 from app.adapters.inbound.http.errors import register_error_handlers
+from app.adapters.inbound.http.middleware import (
+    BodySizeLimitMiddleware,
+    SecurityHeadersMiddleware,
+)
 from app.adapters.inbound.http.rate_limit import limiter
 from app.adapters.inbound.http.routes import build_router
 from app.adapters.outbound.cache.redis_cache import RedisRequestCache, build_redis_client
@@ -37,13 +42,10 @@ from app.config.settings import Settings, get_settings
 logger = get_logger(__name__)
 
 
-def _create_tables_with_retry(engine: object, attempts: int = 10, delay: float = 2.0) -> None:
+def _create_tables_with_retry(engine: Engine, attempts: int = 10, delay: float = 2.0) -> None:
     """O healthcheck do compose segura a API até o MySQL responder ping, mas
     'ping ok' não significa 'pronto para DDL'. Retry curto no boot cobre essa
     janela em vez de morrer no primeiro CREATE TABLE."""
-    from sqlalchemy.engine import Engine
-
-    assert isinstance(engine, Engine)
     for attempt in range(1, attempts + 1):
         try:
             create_tables(engine)
@@ -96,6 +98,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # OpenAPI/Swagger habilitado: é vitrine e facilita a avaliação.
         docs_url="/docs",
     )
+
+    # Middlewares ASGI: o corpo é limitado ANTES de qualquer parse; os
+    # headers defensivos saem em TODA resposta (inclusive erros).
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_body_bytes)
 
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
