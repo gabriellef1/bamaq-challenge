@@ -1,0 +1,56 @@
+flowchart TB
+    subgraph clients["Cliente"]
+        C["curl / app<br/>HTTP"]
+    end
+
+    subgraph api["API — FastAPI (container api)"]
+        direction TB
+        MW["Middlewares<br/>rate limit · body limit · headers"]
+        RT["Rotas (adapter inbound HTTP)<br/>validação Pydantic"]
+        UC1["CreateRequest<br/>(caso de uso)"]
+        UC2["GetRequest<br/>cache-aside (caso de uso)"]
+        MW --> RT
+        RT --> UC1
+        RT --> UC2
+    end
+
+    subgraph domain["Domínio (puro, sem infra)"]
+        D["Request · RequestStatus<br/>decide_status: ≤1000 APPROVED / >1000 MANUAL_REVIEW<br/>máquina de estados: PENDING → terminal"]
+    end
+
+    subgraph consumer["Consumer (container consumer)"]
+        direction TB
+        LOOP["Loop Kafka<br/>poll → handler → commit manual"]
+        HAND["MessageHandler<br/>retry + backoff + jitter"]
+        UC3["ProcessRequestEvent<br/>idempotência: is_pending + CAS"]
+        LOOP --> HAND --> UC3
+    end
+
+    MY[("MySQL 8.4<br/>tabela requests<br/>fonte da verdade")]
+    RD[("Redis 7.4<br/>cache TTL 300s<br/>best-effort")]
+    KF["Kafka 3.9 KRaft<br/>request-processing (3 partições)<br/>chave = request_id"]
+    DLQ["request-processing-dlq<br/>payload intacto + headers de diagnóstico"]
+
+    C -->|"1· POST /requests"| MW
+    UC1 -->|"2· INSERT status=PENDING"| MY
+    UC1 -->|"3· publica evento (acks=all, flush)"| KF
+    UC1 -.->|"4· 201 + id"| C
+
+    KF -->|"5· consome"| LOOP
+    UC3 -->|"6· SELECT + UPDATE…WHERE status=PENDING (CAS)"| MY
+    UC3 -->|"7· DELETE (invalida cache)"| RD
+    HAND -->|"falha definitiva:<br/>marca FAILED + arquiva"| DLQ
+
+    C -->|"GET /requests/{id}"| MW
+    UC2 -->|"a· busca (hit → responde)"| RD
+    UC2 -->|"b· miss → SELECT"| MY
+    UC2 -->|"c· popula com TTL"| RD
+
+    UC1 & UC2 & UC3 --- D
+
+    classDef store fill:#1a3a5c,stroke:#4a90d9,color:#fff
+    classDef broker fill:#3d2b56,stroke:#9b6dd6,color:#fff
+    classDef dom fill:#1e4620,stroke:#5cb85c,color:#fff
+    class MY,RD store
+    class KF,DLQ broker
+    class D dom
