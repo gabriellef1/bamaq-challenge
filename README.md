@@ -22,6 +22,7 @@ retry com backoff, DLQ e segurança levada a sério.
 
 - [Arquitetura (Parte 1 — System Design)](#arquitetura-parte-1--system-design)
 - [Como rodar](#como-rodar)
+- [Demo visual](#demo-visual)
 - [Endpoints e exemplos](#endpoints-e-exemplos)
 - [Como rodar os testes](#como-rodar-os-testes)
 - [Estrutura do projeto](#estrutura-do-projeto)
@@ -87,6 +88,29 @@ docker compose logs -f api consumer
 
 A API fica em `http://localhost:8000` (Swagger em `/docs`).
 Para derrubar: `docker compose down -v`.
+
+---
+
+## Demo visual
+
+![Demo visual](docs/demo.png)
+
+Painel estático em [`demo/index.html`](demo/index.html) (arquivo único, sem build e sem
+framework) que mostra o fluxo assíncrono acontecendo: cria solicitações, acompanha as
+`PENDING` com polling de 2s até resolverem, destaca as etapas
+API → MySQL → Kafka → Consumer → Redis e consulta por id com o JSON formatado.
+
+**Como usar**: com a stack rodando (`docker compose up -d`), abra `demo/index.html`
+direto no navegador. Se o seu navegador bloquear chamadas a partir de `file://`,
+sirva a pasta localmente e acesse `http://localhost:8080`:
+
+```bash
+python3 -m http.server 8080 -d demo
+```
+
+O CORS da API está liberado **apenas** para `localhost`/`127.0.0.1` e para a origem
+`null` (página aberta via `file://`), sem credenciais — existe só para esta demo local
+(ver comentário em `src/app/composition/api.py`).
 
 ---
 

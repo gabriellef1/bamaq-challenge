@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.extension import _rate_limit_exceeded_handler
 from sqlalchemy.engine import Engine
@@ -99,6 +100,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
         # OpenAPI/Swagger habilitado: é vitrine e facilita a avaliação.
         docs_url="/docs",
+    )
+
+    # CORS — existe SOMENTE para a demo visual local (demo/index.html).
+    # Libera chamadas de navegador vindas de localhost/127.0.0.1 (a demo
+    # servida via http local) e da origem "null" (a demo aberta direto do
+    # disco, via file://). Nenhuma origem externa é permitida, sem cookies
+    # (allow_credentials fica no default False) e só os métodos que a API
+    # expõe. Num deploy real, remover ou restringir ao domínio do frontend.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["null"],
+        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type"],
     )
 
     # Middlewares ASGI: o corpo é limitado ANTES de qualquer parse; os
