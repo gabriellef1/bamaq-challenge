@@ -43,6 +43,22 @@
     background-image: radial-gradient(1100px 500px at 80% -10%, rgba(59, 130, 246, .07), transparent 60%);
   }
 
+  /* ---------- aviso da versão publicada (GitHub Pages) ---------- */
+  .pages-note {
+    display: none; align-items: center; justify-content: center; gap: 6px;
+    flex-wrap: wrap; text-align: center;
+    padding: 9px 28px; font-size: 12.5px; color: var(--muted);
+    background: linear-gradient(90deg, rgba(59, 130, 246, .12), rgba(14, 165, 233, .05));
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .pages-note.show { display: flex; }
+  .pages-note code {
+    font-family: var(--mono); font-size: 11.5px; color: var(--text);
+    background: rgba(0, 0, 0, .3); padding: 2px 7px; border-radius: 6px;
+  }
+  .pages-note a { color: var(--blue); font-weight: 600; text-decoration: none; }
+  .pages-note a:hover { text-decoration: underline; }
+
   /* ---------- topbar ---------- */
   .topbar {
     display: flex; align-items: center; justify-content: space-between; gap: 16px;
@@ -237,6 +253,14 @@
 </head>
 <body>
 
+<!-- Exibido apenas na versão publicada (GitHub Pages): a página é estática,
+     mas a API que ela consome roda na máquina de quem visita. -->
+<div class="pages-note" id="pagesNote">
+  <span>✦ Painel de demonstração — requer a stack local rodando
+  (<code>docker compose up -d</code>).</span>
+  <a href="https://github.com/gabriellef1/bamaq-challenge" target="_blank" rel="noopener">Veja o repositório →</a>
+</div>
+
 <header class="topbar">
   <div class="brand">
     <div class="brand-mark">B</div>
@@ -341,6 +365,10 @@ let pollDelay = 2000;       // backoff simples quando a API devolve 429
 let pollTimer = null;
 
 const $ = (id) => document.getElementById(id);
+
+// Aviso do topo: só faz sentido na versão publicada no GitHub Pages —
+// localmente (file:// ou localhost) a instrução seria redundante.
+if (location.hostname.endsWith("github.io")) $("pagesNote").classList.add("show");
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const hhmmss = (d) => d.toLocaleTimeString("pt-BR");
 

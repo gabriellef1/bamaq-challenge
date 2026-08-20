@@ -102,15 +102,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/docs",
     )
 
-    # CORS — existe SOMENTE para a demo visual local (demo/index.html).
+    # CORS — existe SOMENTE para a demo visual (demo/index.html).
     # Libera chamadas de navegador vindas de localhost/127.0.0.1 (a demo
-    # servida via http local) e da origem "null" (a demo aberta direto do
-    # disco, via file://). Nenhuma origem externa é permitida, sem cookies
-    # (allow_credentials fica no default False) e só os métodos que a API
-    # expõe. Num deploy real, remover ou restringir ao domínio do frontend.
+    # servida via http local), da origem "null" (a demo aberta direto do
+    # disco, via file://) e do GitHub Pages, onde a mesma demo fica
+    # publicada — a página vem do Pages, mas continua falando com ESTA API
+    # em localhost:8000, então a stack local precisa estar de pé. Nenhuma
+    # outra origem é permitida, sem cookies (allow_credentials fica no
+    # default False) e só os métodos que a API expõe. Num deploy real,
+    # remover ou restringir ao domínio do frontend.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["null"],
+        allow_origins=["null", "https://gabriellef1.github.io"],
         allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],

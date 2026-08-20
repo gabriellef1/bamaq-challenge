@@ -100,16 +100,23 @@ framework) que mostra o fluxo assíncrono acontecendo: cria solicitações, acom
 `PENDING` com polling de 2s até resolverem, destaca as etapas
 API → MySQL → Kafka → Consumer → Redis e consulta por id com o JSON formatado.
 
-**Como usar**: com a stack rodando (`docker compose up -d`), abra `demo/index.html`
-direto no navegador. Se o seu navegador bloquear chamadas a partir de `file://`,
-sirva a pasta localmente e acesse `http://localhost:8080`:
+**Versão publicada**: a demo está no ar em
+**<https://gabriellef1.github.io/bamaq-challenge/>** (GitHub Pages, deploy automático
+via [`.github/workflows/pages.yml`](.github/workflows/pages.yml) a cada push na
+`main`). A página é estática — a API que ela consome roda na **sua** máquina, então
+suba a stack antes (`docker compose up -d`).
+
+**Como usar localmente**: com a stack rodando (`docker compose up -d`), abra
+`demo/index.html` direto no navegador. Se o seu navegador bloquear chamadas a partir
+de `file://`, sirva a pasta localmente e acesse `http://localhost:8080`:
 
 ```bash
 python3 -m http.server 8080 -d demo
 ```
 
-O CORS da API está liberado **apenas** para `localhost`/`127.0.0.1` e para a origem
-`null` (página aberta via `file://`), sem credenciais — existe só para esta demo local
+O CORS da API está liberado **apenas** para `localhost`/`127.0.0.1`, para a origem
+`null` (página aberta via `file://`) e para `https://gabriellef1.github.io` (a demo
+no Pages), sem credenciais — existe só para esta demo
 (ver comentário em `src/app/composition/api.py`).
 
 ---
