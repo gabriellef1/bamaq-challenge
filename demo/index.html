@@ -120,6 +120,12 @@
   }
 
   /* ---------- formulário ---------- */
+  .clear-btn {
+    width: auto; padding: 2px 9px; background: none; border: 0;
+    color: var(--faint); font-size: 16px; line-height: 1; font-weight: 400;
+    border-radius: 6px; cursor: pointer;
+  }
+  .clear-btn:hover { color: var(--text); background: var(--card-soft); filter: none; }
   label { display: block; font-size: 12.5px; color: var(--muted); margin: 0 0 5px; }
   input[type=text], input[type=number] {
     width: 100%; padding: 9px 12px;
@@ -280,7 +286,10 @@
   <!-- coluna esquerda: criar + consultar -->
   <div class="col">
     <section class="card">
-      <h2>Nova solicitação</h2>
+      <div class="list-head">
+        <h2>Nova solicitação</h2>
+        <button type="button" class="clear-btn" id="clearFormBtn" title="Limpar campos" aria-label="Limpar campos">×</button>
+      </div>
       <form id="createForm" novalidate>
         <div class="field">
           <label for="customerId">customer_id</label>
@@ -430,6 +439,13 @@ function translate(msg = "") {
 }
 
 // ------------------------------------------------------------------- criar --
+$("clearFormBtn").addEventListener("click", () => {
+  $("customerId").value = "";
+  $("value").value = "";
+  hideMsg($("createMsg"));
+  $("customerId").focus();
+});
+
 $("createForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const msgEl = $("createMsg");
@@ -527,7 +543,12 @@ function renderList() {
     idBtn.type = "button"; idBtn.className = "id-btn";
     idBtn.textContent = req.id.slice(0, 8) + "…";
     idBtn.title = `${req.id} — clique para consultar`;
-    idBtn.addEventListener("click", () => { $("lookupId").value = req.id; doLookup(); });
+    idBtn.addEventListener("click", () => {
+      $("lookupId").value = req.id;
+      // em telas estreitas o card de consulta fica fora da viewport
+      $("lookupId").closest(".card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      doLookup();
+    });
     tdId.appendChild(idBtn);
 
     const tdCust = document.createElement("td");
